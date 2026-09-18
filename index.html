@@ -6,27 +6,77 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>视线暂停学习器</title>
   <style>
+    /* 浅色清爽主题 */
     body {
-      font-family: -apple-system, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       padding: 20px;
+      background: #f5f7fa;
+      /* 浅灰白背景，不刺眼 */
+      color: #333;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      color: #2c3e50;
+      margin-bottom: 20px;
     }
 
     video {
-      width: 100%;
-      max-width: 800px;
       background: #000;
+      display: block;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
     }
 
-    button,
-    input {
-      font-size: 18px;
-      margin: 8px 0;
+    #lessonVideo {
+      width: 100%;
+      min-height: 300px;
+      /* 避免加载前太塌陷 */
     }
 
     #camVideo {
       width: 200px;
-      border: 2px solid #0a0;
-      margin-top: 10px;
+      border: 3px solid #4CAF50;
+      /* 绿色边框保留，更鲜亮 */
+      margin-top: 15px;
+      border-radius: 6px;
+    }
+
+    button,
+    input {
+      font-size: 16px;
+      margin: 10px 0;
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: none;
+    }
+
+    button {
+      background: #4CAF50;
+      color: white;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    button:active {
+      background: #43a047;
+    }
+
+    input[type="file"] {
+      background: #fff;
+      border: 1px solid #ccc;
+      padding: 8px;
+      border-radius: 8px;
+    }
+
+    #status {
+      margin: 10px 0;
+      padding: 12px;
+      border-radius: 8px;
+      background: #e8f5e9;
+      color: #2e7d32;
+      display: none;
     }
   </style>
 </head>
@@ -37,40 +87,44 @@
   <input type="file" id="fileInput" accept="video/*">
   <br>
 
-  <!-- 学习视频 -->
   <video id="lessonVideo" playsinline controls></video>
   <br>
 
-  <!-- 摄像头（只保留这一个，属性写全：muted + playsinline + autoplay 兜底） -->
   <button id="startCam">🎥 开始视线检测</button>
+  <div id="status"></div>
+
+  <!-- 核心属性保留：muted + playsinline + autoplay 防卡顿 -->
   <video id="camVideo" playsinline muted autoplay></video>
 
   <script>
-    // 选视频播放
+    const setStatus = (msg, ok = true) => {
+      const s = document.getElementById('status')
+      s.style.display = 'block'
+      s.textContent = (ok ? '✅ ' : '❌ ') + msg
+    }
+
+    // 学习视频
     const fileInput = document.getElementById('fileInput')
     const lessonVideo = document.getElementById('lessonVideo')
-
     fileInput.onchange = function () {
       const file = fileInput.files[0]
+      if (!file) return
       lessonVideo.src = URL.createObjectURL(file)
       lessonVideo.play().catch(() => { })
     }
 
-    // 按钮开摄像头（修复版）
+    // 摄像头（iPad：facingMode:user；电脑调试可改 video:true）
     document.getElementById('startCam').addEventListener('click', async () => {
       try {
-        // 电脑调试用 video: true，iPad 后续可改回 facingMode: 'user'
-        const stream = await navigator.mediaDevices.getUserMedia({video: true})
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {facingMode: 'user'}, audio: false
+        })
         const camVideo = document.getElementById('camVideo')
-
         camVideo.srcObject = stream
-
-        // 关键：显式调用 play()，黑屏救星
-        await camVideo.play()
-
-        alert('✅ 摄像头开了，应该有画面了！')
+        await camVideo.play() // 显式播放，防定格
+        setStatus('摄像头开了')
       } catch (e) {
-        alert('❌ 失败: ' + e.name + '\n' + e.message)
+        setStatus('失败: ' + e.name + ' ' + e.message, false)
       }
     })
   </script>
