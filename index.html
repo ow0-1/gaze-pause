@@ -3,130 +3,118 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>视线暂停学习器</title>
+  <title>视线检测 - 本地托管版</title>
   <style>
-    /* 浅色清爽主题 */
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: sans-serif;
       padding: 20px;
-      background: #f5f7fa;
-      /* 浅灰白背景，不刺眼 */
-      color: #333;
-      max-width: 800px;
-      margin: 0 auto;
     }
 
-    h1 {
-      color: #2c3e50;
-      margin-bottom: 20px;
-    }
-
-    video {
-      background: #000;
+    video,
+    canvas {
+      max-width: 100%;
+      border: 1px solid #ccc;
       display: block;
-      border-radius: 8px;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-    }
-
-    #lessonVideo {
-      width: 100%;
-      min-height: 300px;
-      /* 避免加载前太塌陷 */
-    }
-
-    #camVideo {
-      width: 200px;
-      border: 3px solid #4CAF50;
-      /* 绿色边框保留，更鲜亮 */
-      margin-top: 15px;
-      border-radius: 6px;
-    }
-
-    button,
-    input {
-      font-size: 16px;
-      margin: 10px 0;
-      padding: 10px 16px;
-      border-radius: 8px;
-      border: none;
+      margin-bottom: 10px;
     }
 
     button {
-      background: #4CAF50;
-      color: white;
+      padding: 10px 20px;
+      font-size: 16px;
       cursor: pointer;
-      transition: 0.2s;
     }
 
-    button:active {
-      background: #43a047;
-    }
-
-    input[type="file"] {
-      background: #fff;
-      border: 1px solid #ccc;
-      padding: 8px;
-      border-radius: 8px;
-    }
-
-    #status {
-      margin: 10px 0;
-      padding: 12px;
-      border-radius: 8px;
-      background: #e8f5e9;
-      color: #2e7d32;
-      display: none;
+    #log {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #333;
+      white-space: pre-wrap;
     }
   </style>
 </head>
 
 <body>
-  <h1>📚 视线暂停学习器</h1>
+  <h2>视线检测 (本地托管)</h2>
+  <button id="startBtn">1. 开摄像头并检测</button>
+  <div id="status">等待...</div>
+  <video id="camVideo" autoplay playsinline muted></video>
+  <div id="log"></div>
 
-  <input type="file" id="fileInput" accept="video/*">
-  <br>
+  <script type="module">
+    let vision;
+    const log = (msg) => {
+      console.log(msg);
+      document.getElementById('log').innerText += msg + '\n';
+    };
 
-  <video id="lessonVideo" playsinline controls></video>
-  <br>
-
-  <button id="startCam">🎥 开始视线检测</button>
-  <div id="status"></div>
-
-  <!-- 核心属性保留：muted + playsinline + autoplay 防卡顿 -->
-  <video id="camVideo" playsinline muted autoplay></video>
-
-  <script>
-    const setStatus = (msg, ok = true) => {
-      const s = document.getElementById('status')
-      s.style.display = 'block'
-      s.textContent = (ok ? '✅ ' : '❌ ') + msg
+    // 1. 动态导入本地 JS (已重命名为 .js)
+    try {
+      vision = await import('./mp/vision_bundle.js');
+      log('✅ vision 本地加载成功 (MIME问题已解决)');
+    } catch (e) {
+      console.error(e);
+      log('❌ vision 加载失败: ' + e.message);
     }
 
-    // 学习视频
-    const fileInput = document.getElementById('fileInput')
-    const lessonVideo = document.getElementById('lessonVideo')
-    fileInput.onchange = function () {
-      const file = fileInput.files[0]
-      if (!file) return
-      lessonVideo.src = URL.createObjectURL(file)
-      lessonVideo.play().catch(() => { })
-    }
+    document.getElementById('startBtn').addEventListener('click', async () => {
+      if (!vision) {log('vision 未就绪'); return;}
+      const btn = document.getElementById('startBtn');
+      btn.disabled = true;
+      log('正在开启摄像头...');
 
-    // 摄像头（iPad：facingMode:user；电脑调试可改 video:true）
-    document.getElementById('startCam').addEventListener('click', async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {facingMode: 'user'}, audio: false
-        })
-        const camVideo = document.getElementById('camVideo')
-        camVideo.srcObject = stream
-        await camVideo.play() // 显式播放，防定格
-        setStatus('摄像头开了')
+        // 2. 开摄像头
+        const stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'user'}, audio: false});
+        const cam = document.getElementById('camVideo');
+        cam.srcObject = stream;
+        await cam.play();
+        log('✅ 摄像头已开，加载 WASM 与模型...');
+
+        // 3. 加载本地 WASM
+        const filesetResolver = await vision.FilesetResolver.forVisionTasks("./mp/wasm");
+
+        // 4. 加载本地模型
+        const faceLandmarker = await vision.FaceLandmarker.createFromOptions(filesetResolver, {
+          baseOptions: {
+            modelAssetPath: "./mp/face_landmarker.task",
+            delegate: "GPU"
+          },
+          runningMode: "VIDEO"
+        });
+        log('✅ 模型就绪，开始检测 (寻找 478 关键点)...');
+
+        // 5. 检测循环
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        let frame = 0, last = 0;
+
+        function loop() {
+          if (cam.readyState >= 2) {
+            canvas.width = cam.videoWidth;
+            canvas.height = cam.videoHeight;
+            ctx.drawImage(cam, 0, 0);
+            const res = faceLandmarker.detectForVideo(canvas, performance.now());
+            frame++;
+            const now = Date.now();
+            if (now - last > 2000) {
+              if (res.faceLandmarks && res.faceLandmarks.length > 0) {
+                const lm = res.faceLandmarks[0];
+                log(`帧#${frame} | ✅ 检测到人脸 | ${lm.length} 关键点`);
+              } else {
+                log(`帧#${frame} | ❌ 未检测到人脸`);
+              }
+              last = now;
+            }
+          }
+          requestAnimationFrame(loop);
+        }
+        loop();
       } catch (e) {
-        setStatus('失败: ' + e.name + ' ' + e.message, false)
+        console.error(e);
+        log('❌ 错误: ' + e.message);
+        btn.disabled = false;
       }
-    })
+    });
   </script>
 </body>
 
