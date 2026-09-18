@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <!-- 下面这行让网页在 iPad 上按屏幕宽度显示，不会缩成手机样 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>视线暂停学习器</title>
+  <style>
+    body {
+      font-family: -apple-system, sans-serif;
+      padding: 20px;
+    }
+
+    video {
+      width: 100%;
+      max-width: 800px;
+      background: #000;
+    }
+
+    button,
+    input {
+      font-size: 18px;
+      margin: 8px 0;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>📚 视线暂停学习器</h1>
+
+  <!-- 选择本地视频文件 -->
+  <input type="file" id="fileInput" accept="video/*">
+  <br>
+
+  <!-- 学习视频播放器 -->
+  <video id="lessonVideo" playsinline controls></video>
+  <!-- 放在 video 下面 -->
+  <video id="camVideo" playsinline muted autoplay style="width:200px; border:2px solid #0a0;"></video>
+
+  <script>
+    // 放在原来的 script 里
+    const camVideo = document.getElementById('camVideo')
+
+    // 请求前置摄像头
+    navigator.mediaDevices.getUserMedia({
+      video: {facingMode: 'user'}   // 'user' = 前置
+    })
+      .then(stream => {
+        camVideo.srcObject = stream
+        console.log('✅ 摄像头已开启')
+      })
+      .catch(err => {
+        console.error('❌ 摄像头失败:', err)
+      })
+
+    // 等你选了文件，就把文件塞给 video 播放
+    const fileInput = document.getElementById('fileInput')
+    const video = document.getElementById('lessonVideo')
+
+    fileInput.onchange = function () {
+      const file = fileInput.files[0]
+      // URL.createObjectURL 把本地文件变成临时播放地址
+      video.src = URL.createObjectURL(file)
+      video.play()
+    }
+  </script>
+</body>
+
+</html>
